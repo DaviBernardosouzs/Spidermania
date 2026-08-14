@@ -1,1 +1,18 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente
 .env
+.env.*
+
+# Sessão do WhatsApp
+auth_info_baileys/
+auth_info_baileys_backup/
+
+# Contexto pessoal da IA
+context.md
+
+# Arquivos temporários
+temp/
+*.wav
+*.ogg
