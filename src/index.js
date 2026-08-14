@@ -47,7 +47,10 @@ function obterGifAleatorio() {
             return [
                 'mp4',
                 'webm',
-                'gif'
+                'gif',
+                'jpg',
+                'jpeg',
+                'png'
             ].includes(extensao);
 
         });
