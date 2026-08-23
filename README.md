@@ -256,7 +256,7 @@ SpiderManIA/
 │   │   ├── memory.service.js
 │   │   └── tts.service.js
 │   │
-│   ├── utils/
+dele uma entrada para o servidor MCP com o caminho do `server.js` do Spidermania:
 │   │   ├── audio.utils.js
 │   │   └── randomizer.js
 │   │
@@ -591,3 +591,178 @@ na raiz do repositório.
 > Curioso quando algo é interessante.
 
 **Your friendly neighborhood AI assistant. 🕷️**
+
+---
+
+# Spider-Team MCP
+
+O servidor MCP em `src/mcp/server.js` coordena o time local do Spider-Team por
+stdio. A hierarquia é `Davi -> PeterPark -> Miguel O'Hara -> especialistas`.
+Peter organiza demandas de produto, Miguel planeja e revisa, especialistas
+entregam resultados a Miguel e Ben documenta somente o que foi confirmado.
+
+## Contextos e agentes
+
+Os contextos canônicos ficam em `contexts/`. O `ContextLoader` associa cada
+arquivo ao agente correto, limita extensão e tamanho, bloqueia traversal e
+symlink externo e não registra o conteúdo completo em logs.
+
+O registro e as permissões ficam em `src/mcp/team.config.js`. Os agentes têm
+tools, capacidades, hierarquia e provider próprios. Especialistas não falam
+diretamente com Davi e não podem criar commits.
+
+## Tools, resources e prompts
+
+O MCP expõe inspeção de projeto, contextos, features, tarefas, busca, leitura e
+patch autorizado, validação allowlisted, Git read-only, governança de commit,
+auditoria e documentação. Também mantém aliases de status/relatório legados.
+
+Resources read-only incluem `spiderteam://agents`,
+`spiderteam://agents/{agentId}`, `spiderteam://contexts/{agentId}`,
+`spiderteam://features`, `spiderteam://tasks` e
+`spiderteam://project/summary`. Prompts reutilizáveis cobrem análise,
+planejamento, delegação, revisão e relatório de produto.
+
+## Execução
+
+```bash
+npm run mcp
+npm test
+npm start
+```
+
+O arquivo `.vscode/mcp.json` configura o servidor stdio para o VS Code. O
+estado persistente do orquestrador fica em `mcp-data/`, ignorado pelo Git.
+
+## Usar o time em outro projeto
+
+O servidor MCP pode continuar instalado no Spidermania enquanto trabalha em
+outro repositório. Abra o projeto-alvo no VS Code e adicione ao `.vscode/mcp.json`
+dele o servidor MCP com o caminho do `server.js` do Spidermania:
+
+```json
+{
+      "servers": {
+            "spider-team": {
+                  "type": "stdio",
+                  "command": "node",
+                  "args": ["/caminho/absoluto/Spidermania/src/mcp/server.js"],
+                  "env": {
+                        "SPIDERTEAM_WORKSPACE_ROOT": "${workspaceFolder}",
+                        "SPIDERTEAM_CONTEXT_ROOT": "/caminho/absoluto/Spidermania/contexts"
+                  }
+            }
+      }
+}
+```
+
+Assim, o código lido e alterado é o projeto aberto, mas os papéis e contextos
+do Spider-Team continuam vindo do Spidermania. Para o time programar, Miguel
+primeiro cria e delega a task; o especialista usa `task.start`,
+`worker.plan_task`, `code.search`, `file.read`, `file.patch`,
+`validation.run` e `task.report`. O projeto-alvo precisa ter sua própria
+configuração de testes e seus contextos devem ser adicionados ao diretório
+informado em `SPIDERTEAM_CONTEXT_ROOT` se forem diferentes dos atuais.
+
+Pavitr possui as tools `design.generate_prototype` e `design.export_spec`.
+Elas criam telas navegáveis HTML/CSS/JS e uma especificação JSON em `designs/`,
+sem permitir edição do código de produção. O arquivo pode ser revisado por
+Miguel e enviado pelo Baileys como documento quando a integração de entrega
+for acionada.
+
+Depois da revisão, o proprietário pode receber um artefato pelo contato
+Baileys usando:
+
+```text
+/enviar-arquivo reports/feature-123.pdf | Relatório da feature
+/enviar-arquivo .spiderteam/worktrees/miles-ab12/designs/dashboard/index.html | Protótipo
+```
+
+O runtime valida diretório, extensão, symlink e tamanho antes de enviar. O
+Pavitr não envia diretamente nem acessa o socket do WhatsApp.
+
+Para permitir trabalho simultâneo, Miguel deve chamar
+`task.provision_workspace` para cada task. O MCP cria uma branch local e um
+worktree em `.spiderteam/worktrees/`. Nunca use o mesmo diretório para duas
+tasks. Ao revisar, Miguel compara cada branch, integra somente as alterações
+aprovadas e remove o worktree encerrado com a operação Git correspondente.
+
+## Memória adaptativa de engenharia
+
+Peter pode receber uma orientação explícita pelo comando:
+
+```text
+/feedback Não usar lógica de negócio dentro dos handlers do WhatsApp
+```
+
+Esse feedback é salvo no PostgreSQL em `context_memory` com escopo `team`,
+origem `davi`, categoria `engineering_feedback` e visibilidade para Peter e
+Miguel. Ele não é misturado às memórias pessoais do usuário. Antes de delegar,
+Miguel consulta `get_engineering_guidance`; as orientações relevantes são
+anexadas ao campo de saída da tarefa para que o especialista saiba as
+preferências do proprietário.
+
+A migração está em `src/database/002_adaptive_team_memory.sql`. Execute-a no
+banco existente antes de usar `/feedback`.
+
+## Providers
+
+Use `.env.example` como referência. Peter usa `PRIMARY_LLM_API_KEY`; Miguel e
+especialistas usarão `WORKER_LLM_API_KEY` quando o provider worker for ativado.
+A worker key não é exigida para inspeção ou startup estrutural e não existe
+fallback para a chave principal. Nenhuma chave deve ser versionada.
+
+## Execução real de uma tarefa
+
+Depois de Miguel delegar uma tarefa, o especialista segue este ciclo:
+
+```text
+task.start
+      -> worker.plan_task
+      -> code.search / file.read
+      -> file.patch com caminho autorizado
+      -> validation.run
+      -> task.report para Miguel
+```
+
+O provider worker usa `WORKER_LLM_API_KEY`. Sem essa variável, o planejamento
+retorna `WORKER_PROVIDER_NOT_CONFIGURED`; isso não impede o servidor de iniciar
+para inspeção, nem faz fallback para `IA_APIKEY` ou para o provider principal.
+
+## Segurança e Git
+
+O workspace tem raiz explícita, caminhos protegidos, limites de arquivo e
+saída, comandos de validação cadastrados, auditoria sanitizada e erros
+estruturados. `git.remoteAction` é bloqueada. Somente Miguel pode preparar um
+commit local após revisão; push, merge, rebase, PR e outras ações remotas
+exigem autorização explícita de Davi transmitida por Peter.
+
+## Limitações atuais
+
+O servidor ainda não executa os agentes LLM como subprocessos e não mantém uma
+fila distribuída. O relatório atual é Markdown baseado no estado do
+orquestrador. O Ben já possui geração local de PDF por
+`documentation.generate_pdf`, mas a publicação e o envio do arquivo ainda
+dependem do canal de integração escolhido.
+
+## Fila, execução e integração de tasks
+
+Miguel pode colocar uma task na fila com `task.enqueue`. O executor automático
+provisiona o worktree, inicia a task, gera o plano, solicita uma implementação
+estruturada ao worker, aplica somente patches nos caminhos autorizados, roda as
+validações cadastradas e entrega o resultado para revisão. O andamento fica
+registrado na task em `progress`, `plan`, `filesChanged`, `validationResults`,
+`blockers` e `events`; `task.queue_status` mostra workers ativos e pendentes.
+
+Após revisar com `task.review`, Miguel usa `git.commit_task` para criar commit
+somente na branch da task. Depois, `git.integrate_task` faz merge local da
+branch no workspace principal, desde que a task esteja validada, tenha commit e
+o workspace principal esteja limpo. Nenhuma dessas operações faz push ou usa
+Git remoto.
+
+## PDFs do Ben
+
+Ben pode gerar um documento confirmado usando a tool
+`documentation.generate_pdf`. Ela recebe título e seções, salva somente em
+`reports/*.pdf`, valida o arquivo gerado e retorna o caminho e o tamanho real.
+Conteúdo com aparência de credencial é recusado e PDFs são ignorados pelo Git.

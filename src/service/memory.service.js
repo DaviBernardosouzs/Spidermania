@@ -7,6 +7,8 @@ import {
 
 const { Pool } = pg;
 
+export const TEAM_MEMORY_KEY = 'spider-team';
+
 export class MemoryManager {
     constructor() {
         this.ai = new GoogleGenAI({
@@ -40,7 +42,11 @@ export class MemoryManager {
         categoria,
         contexto,
         confiabilidade = 1.0,
-        explicitamenteSolicitada = false
+        explicitamenteSolicitada = false,
+        memoryScope = 'user',
+        source = 'conversation',
+        visibility = ['peter'],
+        targetAgentId = null
     }) {
         const embedding = await this.gerarEmbedding(contexto);
         const vetor = this.vetorParaPg(embedding);
@@ -52,14 +58,15 @@ export class MemoryManager {
                 id,
                 context,
                 1 - (embeddings <=> $1::vector) AS similaridade
-            FROM context_memory
-            WHERE user_key = $2
-              AND ativa = TRUE
+                        FROM context_memory
+                        WHERE user_key = $2
+                            AND memory_scope = $3
+                            AND ativa = TRUE
               AND embeddings IS NOT NULL
             ORDER BY embeddings <=> $1::vector
             LIMIT 1
             `,
-            [vetor, userKey]
+            [vetor, userKey, memoryScope]
         );
 
         // Se encontrou uma memória praticamente igual (>= 90%), atualiza
@@ -79,7 +86,11 @@ export class MemoryManager {
                     embeddings = $5::vector,
                     last_used_at = NOW(),
                     updated_at = NOW(),
-                    ativa = TRUE
+                    ativa = TRUE,
+                    memory_scope = $7,
+                    source = $8,
+                    visibility = $9,
+                    target_agent_id = $10
                 WHERE id = $6
                 `,
                 [
@@ -88,7 +99,11 @@ export class MemoryManager {
                     confiabilidade,
                     explicitamenteSolicitada,
                     vetor,
-                    existente.rows[0].id
+                    existente.rows[0].id,
+                    memoryScope,
+                    source,
+                    visibility,
+                    targetAgentId
                 ]
             );
 
@@ -111,9 +126,10 @@ export class MemoryManager {
                 confiabilidade,
                 confirmacoes,
                 explicitamente_solicitada
+                , memory_scope, source, visibility, target_agent_id
             )
             VALUES (
-                $1, $2, $3, $4::vector, $5, 1, $6
+                $1, $2, $3, $4::vector, $5, 1, $6, $7, $8, $9, $10
             )
             RETURNING id
             `,
@@ -123,7 +139,11 @@ export class MemoryManager {
                 contexto,
                 vetor,
                 confiabilidade,
-                explicitamenteSolicitada
+                explicitamenteSolicitada,
+                memoryScope,
+                source,
+                visibility,
+                targetAgentId
             ]
         );
 
@@ -159,6 +179,46 @@ export class MemoryManager {
             [vetor, userKey, limite]
         );
 
+        return result.rows;
+    }
+
+    async salvarFeedbackEngenharia({ contexto, targetAgentId = null }) {
+        return this.salvarMemoria({
+            userKey: TEAM_MEMORY_KEY,
+            categoria: 'engineering_feedback',
+            contexto,
+            confiabilidade: 1.0,
+            explicitamenteSolicitada: true,
+            memoryScope: 'team',
+            source: 'davi',
+            visibility: ['peter', 'miguel'],
+            targetAgentId
+        });
+    }
+
+    async buscarPreferenciasParaAgente(agentId, mensagem = '', limite = 12) {
+        const embedding = await this.gerarEmbedding(mensagem || 'preferências de engenharia do proprietário');
+        const vetor = this.vetorParaPg(embedding);
+        const result = await this.pool.query(
+            `
+            SELECT id, categoria, context, confiabilidade, target_agent_id,
+                   1 - (embeddings <=> $1::vector) AS similaridade
+            FROM context_memory
+            WHERE user_key = $2
+              AND memory_scope = 'team'
+              AND ativa = TRUE
+              AND $3 = ANY(visibility)
+              AND (
+                  target_agent_id IS NULL
+                  OR target_agent_id = $3
+                  OR $3 = 'miguel'
+              )
+              AND embeddings IS NOT NULL
+            ORDER BY embeddings <=> $1::vector
+            LIMIT $4
+            `,
+            [vetor, TEAM_MEMORY_KEY, agentId, limite]
+        );
         return result.rows;
     }
 
@@ -213,12 +273,17 @@ Considere salvar:
 - decisões importantes de projetos;
 - coisas que o usuário claramente espera que a IA lembre.
 
+Se o usuário estiver dando feedback sobre código, arquitetura, estilo,
+backend, frontend ou uma preferência de implementação, use escopo de equipe:
+"escopo": "team" e categoria "engineering_feedback".
+
 Se existir algo relevante, responda SOMENTE neste JSON:
 {
     "deveSalvar": true,
     "categoria": "preferencia",
     "memoria": "descrição objetiva da informação",
-    "confiabilidade": 0.9
+    "confiabilidade": 0.9,
+    "escopo": "user"
 }
 
 Se não existir:

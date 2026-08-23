@@ -14,6 +14,12 @@
         ativa BOOLEAN DEFAULT true,
         last_used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        memory_scope VARCHAR(30) NOT NULL DEFAULT 'user',
+        source VARCHAR(30) NOT NULL DEFAULT 'conversation',
+        visibility VARCHAR(30)[] NOT NULL DEFAULT ARRAY['peter'],
+        target_agent_id VARCHAR(100),
+        feedback_status VARCHAR(30) NOT NULL DEFAULT 'active'
     );
 
     -- Índice HNSW para busca vetorial muito mais rápida (otimizado para similaridade por cosseno)

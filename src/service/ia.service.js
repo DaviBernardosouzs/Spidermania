@@ -69,6 +69,25 @@ Confiabilidade: ${memoria.confiabilidade}
     }
 }
 
+async function construirContextoDoAgente(agentId, tarefa, contextoBaseAgente) {
+    const preferencias =
+        await memory.buscarPreferenciasParaAgente(
+            agentId,
+            tarefa,
+            12
+        );
+
+    if (!preferencias.length) {
+        return contextoBaseAgente;
+    }
+
+    const feedback = preferencias
+        .map((item, index) => `${index + 1}. ${item.context}`)
+        .join('\n');
+
+    return `${contextoBaseAgente}\n\n# PREFERÊNCIAS DE ENGENHARIA DE DAVI\nConsidere estas orientações ao planejar ou revisar a tarefa. Elas são instruções de qualidade, não substituem os critérios de aceite:\n${feedback}`;
+}
+
 
 // Perguntar IA
 async function perguntarIA(texto, userKey) {
@@ -184,6 +203,20 @@ async function salvarMemoria(dados) {
     }
 }
 
+async function salvarFeedbackEngenharia(contexto, targetAgentId = null) {
+    return memory.salvarFeedbackEngenharia({
+        contexto,
+        targetAgentId
+    });
+}
+
+async function buscarPreferenciasParaAgente(agentId, mensagem) {
+    return memory.buscarPreferenciasParaAgente(
+        agentId,
+        mensagem
+    );
+}
+
 
 // Esquecer Memoria
 async function esquecerMemoria(
@@ -241,6 +274,8 @@ export {
     perguntarIA,
     perguntarIAComAudio,
     salvarMemoria,
+    salvarFeedbackEngenharia,
+    buscarPreferenciasParaAgente,
     esquecerMemoria,
     analisarMemoria
 };

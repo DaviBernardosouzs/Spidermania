@@ -16,3 +16,9 @@ context.md
 temp/
 *.wav
 *.ogg
+
+# Estado local do orquestrador
+mcp-data/
+.spiderteam/
+reports/*.pdf
+designs/

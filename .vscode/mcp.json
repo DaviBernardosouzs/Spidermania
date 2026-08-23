@@ -1,0 +1,13 @@
+{
+  "servers": {
+    "spidermania-peterpark": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["${workspaceFolder}/src/mcp/server.js"],
+      "env": {
+        "SPIDERTEAM_WORKSPACE_ROOT": "${workspaceFolder}",
+        "SPIDERTEAM_CONTEXT_ROOT": "${workspaceFolder}/contexts"
+      }
+    }
+  }
+}

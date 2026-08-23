@@ -1,0 +1,15 @@
+{
+  "servers": {
+    "spider-team": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/home/davi/Documentos/projetos/Spidermania/src/mcp/server.js"
+      ],
+      "env": {
+        "SPIDERTEAM_WORKSPACE_ROOT": "${workspaceFolder}",
+        "SPIDERTEAM_CONTEXT_ROOT": "/home/davi/Documentos/projetos/Spidermania/contexts"
+      }
+    }
+  }
+}

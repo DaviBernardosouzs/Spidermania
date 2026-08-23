@@ -14,6 +14,7 @@ import {
     perguntarIAComAudio,
     analisarMemoria,
     salvarMemoria,
+    salvarFeedbackEngenharia,
     esquecerMemoria
 } from './service/ia.service.js';
 
@@ -23,6 +24,16 @@ import {
     pcmParaWav,
     wavParaOggOpus
 } from './utils/audio.utils.js';
+
+import {
+    buildHealthReport,
+    createManagedTask,
+    formatStatus,
+    updateManagedTask
+} from './mcp/orchestrator.service.js';
+
+import { team } from './mcp/team.config.js';
+import { sendDeliverableArtifact } from './service/whatsapp-artifact.service.js';
 
 
 // Guarda os áudios enviados pela IA para evitar loop
@@ -557,7 +568,257 @@ async function startSock() {
                     }
 
 
-                    // ===== CAMINHO 4: mensagem de TEXTO normal =====
+                    // ===== CAMINHO: feedback de engenharia =====
+
+                    if (
+                        texto.startsWith(
+                            '/feedback'
+                        )
+                    ) {
+
+                        const feedback =
+                            texto
+                                .replace(
+                                    '/feedback',
+                                    ''
+                                )
+                                .trim();
+
+                        if (!feedback) {
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                {
+                                    text:
+                                        '🕷 Use: /feedback sua preferência ou algo que deve ser evitado no código'
+                                }
+                            );
+
+                            continue;
+                        }
+
+                        try {
+                            await salvarFeedbackEngenharia(
+                                feedback
+                            );
+
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                {
+                                    text:
+                                        '🕷 Feedback registrado. Vou levar essa orientação ao Miguel nas próximas delegações.'
+                                }
+                            );
+                        } catch (erro) {
+                            console.error(
+                                'ERRO AO SALVAR FEEDBACK DE ENGENHARIA:',
+                                erro
+                            );
+
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                {
+                                    text:
+                                        '🕷 Não consegui registrar o feedback agora. O banco de memória precisa estar disponível.'
+                                }
+                            );
+                        }
+
+                        continue;
+                    }
+
+
+                    if (
+                        texto.startsWith(
+                            '/enviar-arquivo'
+                        )
+                    ) {
+
+                        const partes =
+                            texto
+                                .replace(
+                                    '/enviar-arquivo',
+                                    ''
+                                )
+                                .trim()
+                                .split('|')
+                                .map((parte) => parte.trim());
+
+                        if (!partes[0]) {
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                {
+                                    text:
+                                        '🕷 Use: /enviar-arquivo caminho-do-artefato | legenda opcional'
+                                }
+                            );
+
+                            continue;
+                        }
+
+                        try {
+                            const enviado =
+                                await sendDeliverableArtifact(
+                                    sock,
+                                    msg.key.remoteJid,
+                                    partes[0],
+                                    partes[1] || 'Artefato revisado pelo Spider-Team'
+                                );
+
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                {
+                                    text:
+                                        `🕷 Arquivo enviado: ${enviado.fileName} (${enviado.size} bytes)`
+                                }
+                            );
+                        } catch (erro) {
+                            console.error(
+                                'ERRO AO ENVIAR ARTEFATO:',
+                                erro
+                            );
+
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                {
+                                    text:
+                                        `🕷 Não consegui enviar esse artefato: ${erro.message}`
+                                }
+                            );
+                        }
+
+                        continue;
+                    }
+
+
+                    // ===== CAMINHO 4: gestão do time =====
+
+                    if (
+                        texto === '/equipe'
+                    ) {
+
+                        const equipe =
+                            team
+                                .map((membro) => `- ${membro.id}: ${membro.name}\n  ${membro.scope}`)
+                                .join('\n');
+
+                        await sock.sendMessage(
+                            msg.key.remoteJid,
+                            { text: `🕷 Time do PeterPark:\n${equipe}` }
+                        );
+
+                        continue;
+                    }
+
+
+                    if (
+                        texto === '/status'
+                    ) {
+
+                        await sock.sendMessage(
+                            msg.key.remoteJid,
+                            { text: `🕷 Status do projeto:\n${formatStatus()}` }
+                        );
+
+                        continue;
+                    }
+
+
+                    if (
+                        texto === '/relatorio'
+                    ) {
+
+                        await sock.sendMessage(
+                            msg.key.remoteJid,
+                            { text: `🕷 Relatório de saúde:\n\n${buildHealthReport()}` }
+                        );
+
+                        continue;
+                    }
+
+
+                    if (
+                        texto.startsWith('/tarefa')
+                    ) {
+
+                        const partes =
+                            texto
+                                .replace('/tarefa', '')
+                                .trim()
+                                .split('|')
+                                .map((parte) => parte.trim());
+
+                        if (partes.length < 2 || !partes[0] || !partes[1]) {
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                { text: '🕷 Use: /tarefa responsável | título | descrição opcional' }
+                            );
+                            continue;
+                        }
+
+                        try {
+                            const tarefa = await createManagedTask({
+                                owner: partes[0],
+                                title: partes[1],
+                                description: partes[2] || ''
+                            });
+
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                { text: `🕷 Tarefa criada para ${tarefa.owner}: ${tarefa.title}\nID: ${tarefa.id}` }
+                            );
+                        } catch (erro) {
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                { text: `🕷 Não consegui criar a tarefa: ${erro.message}` }
+                            );
+                        }
+
+                        continue;
+                    }
+
+
+                    if (
+                        texto.startsWith('/atualizar')
+                    ) {
+
+                        const partes =
+                            texto
+                                .replace('/atualizar', '')
+                                .trim()
+                                .split('|')
+                                .map((parte) => parte.trim());
+
+                        if (partes.length < 2 || !partes[0] || !partes[1]) {
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                { text: '🕷 Use: /atualizar ID | status | nota opcional' }
+                            );
+                            continue;
+                        }
+
+                        try {
+                            const tarefa = await updateManagedTask(
+                                partes[0],
+                                partes[1],
+                                partes[2] || ''
+                            );
+
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                { text: `🕷 Atualizado: [${tarefa.status}] ${tarefa.title}` }
+                            );
+                        } catch (erro) {
+                            await sock.sendMessage(
+                                msg.key.remoteJid,
+                                { text: `🕷 Não consegui atualizar: ${erro.message}` }
+                            );
+                        }
+
+                        continue;
+                    }
+
+
+                    // ===== CAMINHO 5: mensagem de TEXTO normal =====
 
                     console.log(
                         'MENSAGEM DE TEXTO RECEBIDA:',
@@ -611,25 +872,20 @@ async function startSock() {
                             aprendizado.memoria
                         ) {
 
-                            await salvarMemoria({
-
-                                userKey,
-
-                                categoria:
-                                    aprendizado.categoria ||
-                                    'aprendizado',
-
-                                contexto:
+                            if (aprendizado.escopo === 'team') {
+                                await salvarFeedbackEngenharia(
                                     aprendizado.memoria,
-
-                                confiabilidade:
-                                    aprendizado.confiabilidade ||
-                                    0.8,
-
-                                explicitamenteSolicitada:
-                                    false
-
-                            });
+                                    aprendizado.targetAgentId || null
+                                );
+                            } else {
+                                await salvarMemoria({
+                                    userKey,
+                                    categoria: aprendizado.categoria || 'aprendizado',
+                                    contexto: aprendizado.memoria,
+                                    confiabilidade: aprendizado.confiabilidade || 0.8,
+                                    explicitamenteSolicitada: false
+                                });
+                            }
 
 
                             console.log(
